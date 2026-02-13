@@ -56,15 +56,12 @@
   - `Prefetch` (`*.pf` + статус `no deleted` / `program deleted` / `prefetch missing`)
   - `DPS` (строки формата `!!FILE!value!`)
 - Отдельный список `otherdisk` для путей вне базовых локальных дисков (`C/D`)
-- Сканирование по встроенным YARA-правилам для целевых PE
-- Современный HTML-отчёт: вкладки, поиск, RU/EN, светлая/тёмная тема
+- Сканирование по встроенным правилам для целевых PE
+- HTML-отчёт: вкладки, поиск, RU/EN, светлая/тёмная тема
 
 ### Требования
 
 - Windows
-- Права администратора (manifest `requireAdministrator`)
-- Rust/Cargo (если собираете из исходников)
-- Интернет при первом запуске для загрузки `strings64.exe` (Sysinternals)
 
 ### Быстрый старт
 
@@ -147,14 +144,11 @@ Dump-heavy investigations are noisy. The tool is focused on surfacing what is ac
   - `DPS` rows (`!!FILE!value!` format)
 - `otherdisk` list for artifacts outside primary local disks (`C/D`)
 - Embedded-rule scanning over target PE files
-- Modern HTML report: tabs, search, RU/EN, dark/light theme
+- HTML report: tabs, search, RU/EN, dark/light theme
 
 ### Requirements
 
 - Windows
-- Administrator rights (manifest uses `requireAdministrator`)
-- Rust/Cargo (if building from source)
-- Internet on first run to download `strings64.exe` (Sysinternals)
 
 ### Quick start
 
