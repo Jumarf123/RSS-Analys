@@ -6,6 +6,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/Jumarf123/RSS-Analys/releases/download/1.0/RSS-Analys.exe">
+    <img alt="Download RSS-Analys" src="https://img.shields.io/badge/Скачать%20%2F%20Download-RSS--Analys.exe-2ea043?style=for-the-badge&logo=github&logoColor=white" />
+  </a>
+</p>
+
+
+<p align="center">
   <img alt="Windows" src="https://img.shields.io/badge/Platform-Windows-2ea043?style=flat-square" />
   <img alt="Rust" src="https://img.shields.io/badge/Built%20with-Rust-b7410e?style=flat-square" />
   <img alt="Reports" src="https://img.shields.io/badge/Output-TXT%20%2B%20HTML-8250df?style=flat-square" />
