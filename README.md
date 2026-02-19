@@ -1,4 +1,4 @@
-# RSS-Analys
+# RSS-Analys v2.0 update 19.02.2026
 
 <p align="center">
   <a href="#ru"><img alt="Русский" src="https://img.shields.io/badge/Русский-Read-1f6feb?style=for-the-badge" /></a>
@@ -21,6 +21,7 @@
 
 <p align="center">
   Практичный инструмент для <b>Minecraft screenshare</b>: меньше мусора, больше полезных артефактов, быстрее ручной разбор.
+  Better than all. Rss-Analys >> Kernel Live dump (by spokwn)
 </p>
 
 <p align="center">
