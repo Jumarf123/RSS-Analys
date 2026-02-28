@@ -1,4 +1,4 @@
-# RSS-Analys v2.0 update 19.02.2026
+# RSS-Analys v3.0 update 28.02.2026
 
 <p align="center">
   <a href="#ru"><img alt="Русский" src="https://img.shields.io/badge/Русский-Read-1f6feb?style=for-the-badge" /></a>
@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Jumarf123/RSS-Analys/releases/download/2.0/RSS-Analys.exe">
+  <a href="https://github.com/Jumarf123/RSS-Analys/releases/download/3.0/RSS-Analys.exe">
     <img alt="Download RSS-Analys" src="https://img.shields.io/badge/Скачать%20%2F%20Download-RSS--Analys.exe-2ea043?style=for-the-badge&logo=github&logoColor=white" />
   </a>
 </p>
