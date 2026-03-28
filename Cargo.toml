@@ -1,0 +1,41 @@
+[package]
+name = "recode_rss-analys"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "RSS-Analys"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1.11"
+psl = "2.1"
+crossterm = "0.29"
+jwalk = "0.8"
+sysinfo = "0.37"
+include_dir = "0.7"
+yara-x = "1.5"
+blake3 = "1.8"
+aho-corasick = "1.1"
+rustc-hash = "2.1"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_Memory",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+] }
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[profile.dev]
+opt-level = 2
+debug = 1
+codegen-units = 16
+incremental = true
+
