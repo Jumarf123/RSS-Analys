@@ -1,4 +1,4 @@
-# RSS-Analys v3.0 update 28.02.2026
+# RSS-Analys v3.0 update 11.04.2026
 
 <p align="center">
   <a href="#ru"><img alt="Русский" src="https://img.shields.io/badge/Русский-Read-1f6feb?style=for-the-badge" /></a>
