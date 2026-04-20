@@ -1354,11 +1354,10 @@ fn prepare_single_input_for_analysis(
                 fallback: false,
             };
         }
-        if source
-            .parent()
-            .is_some_and(|p| normalize_cmp_path(p.to_string_lossy().as_ref())
-                == normalize_cmp_path(out_dir.to_string_lossy().as_ref()))
-        {
+        if source.parent().is_some_and(|p| {
+            normalize_cmp_path(p.to_string_lossy().as_ref())
+                == normalize_cmp_path(out_dir.to_string_lossy().as_ref())
+        }) {
             prepared.scan = source.to_path_buf();
             prepared.fast_prepared = true;
             return PreparedInputRow {
@@ -1664,17 +1663,7 @@ fn quick_fast_analysis_gate_raw(raw: &str) -> bool {
     raw.bytes().any(|b| {
         matches!(
             b,
-            b'\\'
-                | b'/'
-                | b':'
-                | b'.'
-                | b'='
-                | b'_'
-                | b'-'
-                | b'?'
-                | b'@'
-                | b'%'
-                | b'0'..=b'9'
+            b'\\' | b'/' | b':' | b'.' | b'=' | b'_' | b'-' | b'?' | b'@' | b'%' | b'0'..=b'9'
         )
     })
 }
@@ -1684,6 +1673,9 @@ fn quick_fast_analysis_gate_lc(lower: &str, fast_needle_matcher: &FastNeedleMatc
         return true;
     }
     if has_high_value_artifact_hint(lower) {
+        return true;
+    }
+    if lower.contains("!!") || lower.contains("processstart,") {
         return true;
     }
     lower.contains("cmd")
@@ -1709,6 +1701,9 @@ fn should_keep_for_fast_analysis_line_lc(
     fast_needle_matcher: &FastNeedleMatcher,
 ) -> bool {
     if fast_needle_matcher.has_match_in_lower(lower) {
+        return true;
+    }
+    if DPS_RE.is_match(line) {
         return true;
     }
     if is_probable_embedded_source_noise(lower) && !has_high_value_artifact_hint(lower) {
@@ -1843,4 +1838,3 @@ fn has_link_like_suffix(lower: &str) -> bool {
     .iter()
     .any(|sfx| lower.contains(sfx))
 }
-

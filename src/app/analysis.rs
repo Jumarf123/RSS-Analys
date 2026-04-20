@@ -353,6 +353,7 @@ fn merge_analyzer(dst: &mut Analyzer, mut src: Analyzer) {
     dst.prefetch.append(&mut src.prefetch);
     dst.dps_files.append(&mut src.dps_files);
     dst.dps_events.append(&mut src.dps_events);
+    dst.file_candidates.append(&mut src.file_candidates);
     dst.beta.append(&mut src.beta);
     for (k, v) in src.file_time_hints {
         dst.file_time_hints.entry(k).or_default().extend(v);
@@ -736,13 +737,12 @@ fn build_target_name_buckets(
     let mut out: FxHashMap<String, FxHashSet<String>> = FxHashMap::default();
     for name in target_names {
         let lower = name.to_ascii_lowercase();
-        let Some((_, ext)) = lower.rsplit_once('.') else {
-            continue;
-        };
-        if ext.is_empty() {
-            continue;
-        }
-        out.entry(ext.to_string()).or_default().insert(lower);
+        let key = Path::new(&lower)
+            .extension()
+            .and_then(OsStr::to_str)
+            .map(|ext| ext.to_ascii_lowercase())
+            .unwrap_or_default();
+        out.entry(key).or_default().insert(lower);
     }
     out
 }
@@ -788,32 +788,28 @@ fn scan_root_for_names(
         let Some(file_name) = entry.file_name().to_str() else {
             continue;
         };
-        let Some((_, ext)) = file_name.rsplit_once('.') else {
-            continue;
-        };
-
-        let names_for_ext = if ext.bytes().all(|b| !b.is_ascii_uppercase()) {
-            target_name_buckets.get(ext)
-        } else {
-            let ext_lower = ext.to_ascii_lowercase();
-            target_name_buckets.get(ext_lower.as_str())
-        };
-        let Some(names_for_ext) = names_for_ext else {
-            continue;
-        };
-
         let name = if file_name.bytes().all(|b| !b.is_ascii_uppercase()) {
-            if !names_for_ext.contains(file_name) {
-                continue;
-            }
             file_name.to_string()
         } else {
-            let lowered = file_name.to_ascii_lowercase();
-            if !names_for_ext.contains(&lowered) {
-                continue;
-            }
-            lowered
+            file_name.to_ascii_lowercase()
         };
+        let bucket_key = Path::new(file_name)
+            .extension()
+            .and_then(OsStr::to_str)
+            .map(|ext| {
+                if ext.bytes().all(|b| !b.is_ascii_uppercase()) {
+                    ext.to_string()
+                } else {
+                    ext.to_ascii_lowercase()
+                }
+            })
+            .unwrap_or_default();
+        let Some(names_for_bucket) = target_name_buckets.get(&bucket_key) else {
+            continue;
+        };
+        if !names_for_bucket.contains(&name) {
+            continue;
+        }
         let p = entry.path();
         if let Some(s) = p.to_str() {
             out.entry(name).or_default().push(s.replace('/', "\\"));

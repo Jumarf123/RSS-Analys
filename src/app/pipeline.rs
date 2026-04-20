@@ -446,8 +446,8 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     let resolve_started = Instant::now();
     log_step(tr(
         user_opts.lang,
-        "[4/8] Формирование allpe из извлеченных EXE/DLL",
-        "[4/8] Building allpe from extracted EXE/DLL",
+        "[4/8] Подготовка наборов файлов и legacy-профилей",
+        "[4/8] Preparing file sets and legacy profiles",
     ));
     let mut extracted_full_pe = filter_items_by_ext(&a.full_paths, PE_ONLY_EXTS);
     let mut extracted_pathless_pe = filter_items_by_ext(&a.pathless, PE_ONLY_EXTS);
@@ -461,7 +461,10 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     if excluded_full_profile > 0 || excluded_pathless_profile > 0 {
         log_info(&format!(
             "{}: full={}, pathless={}",
-            tr_ui("Отсечено build/dependency PE", "Build/dependency PE excluded"),
+            tr_ui(
+                "Отсечено build/dependency legacy PE",
+                "Build/dependency legacy PE excluded"
+            ),
             excluded_full_profile,
             excluded_pathless_profile
         ));
@@ -480,8 +483,8 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
             log_info(&format!(
                 "{}: full={}, pathless={}",
                 tr_ui(
-                    "DMP-fast: отсечено low-signal PE",
-                    "DMP-fast: low-signal PE excluded"
+                    "DMP-fast: отсечено low-signal legacy PE",
+                    "DMP-fast: low-signal legacy PE excluded"
                 ),
                 dropped_fast_full,
                 dropped_fast_pathless
@@ -492,8 +495,8 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         "{}: {}",
         tr(
             user_opts.lang,
-            "Извлечено EXE/DLL с путями",
-            "Extracted EXE/DLL with paths"
+            "Legacy PE с путями",
+            "Legacy PE with paths"
         ),
         extracted_full_pe.len()
     ));
@@ -501,8 +504,8 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         "{}: {}",
         tr(
             user_opts.lang,
-            "Извлечено EXE/DLL без пути",
-            "Extracted EXE/DLL without path"
+            "Legacy PE без пути",
+            "Legacy PE without path"
         ),
         extracted_pathless_pe.len()
     ));
@@ -512,6 +515,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     let (start_full, start_names) = split_full_and_names(&a.start, START_EXTS);
     let (prefetch_full, prefetch_names) = split_full_and_names(&a.prefetch, PREFETCH_EXTS);
     let (dps_full, dps_names) = split_full_and_names_any(&a.dps_files);
+    let (file_candidates_full, file_candidates_names) = split_full_and_names_any(&a.file_candidates);
     let prefetch_program_names =
         collect_prefetch_program_lookup_names(&prefetch_full, &prefetch_names);
 
@@ -522,6 +526,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     lookup_names.extend(start_names.iter().cloned());
     lookup_names.extend(prefetch_names.iter().cloned());
     lookup_names.extend(dps_names.iter().cloned());
+    lookup_names.extend(file_candidates_names.iter().cloned());
     lookup_names.extend(prefetch_program_names);
     extend_missing_full_path_names(&mut lookup_names, &extracted_full_pe);
     extend_missing_full_path_names(&mut lookup_names, &java_full);
@@ -529,6 +534,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     extend_missing_full_path_names(&mut lookup_names, &start_full);
     extend_missing_full_path_names(&mut lookup_names, &prefetch_full);
     extend_missing_full_path_names(&mut lookup_names, &dps_full);
+    extend_missing_full_path_names(&mut lookup_names, &file_candidates_full);
 
     let mut resolve_full_inputs = BTreeSet::new();
     resolve_full_inputs.extend(extracted_full_pe.iter().cloned());
@@ -537,6 +543,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     resolve_full_inputs.extend(start_full.iter().cloned());
     resolve_full_inputs.extend(prefetch_full.iter().cloned());
     resolve_full_inputs.extend(dps_full.iter().cloned());
+    resolve_full_inputs.extend(file_candidates_full.iter().cloned());
     let file_exists_cache = build_file_exists_cache(&resolve_full_inputs);
     let mut name_index = build_seed_name_index(&lookup_names, &resolve_full_inputs);
     let unresolved_lookup_names = lookup_names
@@ -651,6 +658,12 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         (start_full_found, start_full_not_found, start_resolved, start_names_not_found),
         (prefetch_full_found, prefetch_full_not_found, prefetch_resolved, prefetch_names_not_found),
         (dps_full_found, dps_full_not_found, dps_resolved, dps_names_not_found),
+        (
+            file_candidates_full_found,
+            _file_candidates_full_not_found,
+            file_candidates_resolved,
+            _file_candidates_names_not_found,
+        ),
     ) = if lookup_names.len() >= 1024 {
         thread::scope(|scope| {
             let h_main = scope.spawn(|| {
@@ -688,12 +701,21 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
             let h_dps = scope.spawn(|| {
                 resolve_pe_targets(&dps_full, &dps_names, &name_index, Some(&file_exists_cache))
             });
+            let h_file_candidates = scope.spawn(|| {
+                resolve_pe_targets(
+                    &file_candidates_full,
+                    &file_candidates_names,
+                    &name_index,
+                    Some(&file_exists_cache),
+                )
+            });
             (
                 h_main.join().unwrap_or_default(),
                 h_scripts.join().unwrap_or_default(),
                 h_start.join().unwrap_or_default(),
                 h_prefetch.join().unwrap_or_default(),
                 h_dps.join().unwrap_or_default(),
+                h_file_candidates.join().unwrap_or_default(),
             )
         })
     } else {
@@ -723,6 +745,12 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
                 Some(&file_exists_cache),
             ),
             resolve_pe_targets(&dps_full, &dps_names, &name_index, Some(&file_exists_cache)),
+            resolve_pe_targets(
+                &file_candidates_full,
+                &file_candidates_names,
+                &name_index,
+                Some(&file_exists_cache),
+            ),
         )
     };
 
@@ -758,6 +786,11 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     dps_deleted.extend(dps_full_not_found.iter().cloned());
     dps_deleted.extend(dps_names_not_found.iter().cloned());
 
+    let mut file_candidates_found = BTreeSet::new();
+    file_candidates_found.extend(file_candidates_full_found.iter().cloned());
+    file_candidates_found.extend(file_candidates_resolved.iter().cloned());
+    file_candidates_found = dedupe_paths_case_insensitive(&file_candidates_found);
+
     let mut allpe = BTreeSet::new();
     allpe.extend(full_found.iter().cloned());
     allpe.extend(resolved_pathless.iter().cloned());
@@ -768,7 +801,10 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     if excluded_allpe_profile > 0 {
         log_info(&format!(
             "{}: {}",
-            tr_ui("Отсечено allpe build/dependency", "allpe build/dependency excluded"),
+            tr_ui(
+                "Отсечено build/dependency у legacy binary profile",
+                "Legacy binary profile build/dependency excluded"
+            ),
             excluded_allpe_profile
         ));
     }
@@ -821,8 +857,8 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         "{}: {}",
         tr(
             user_opts.lang,
-            "allpe готово (без NormalPE)",
-            "allpe ready (without NormalPE)"
+            "Legacy binary profile готов (без NormalPE)",
+            "Legacy binary profile ready (without NormalPE)"
         ),
         allpe.len()
     ));
@@ -854,8 +890,15 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     all_found_paths.extend(start_found.iter().cloned());
     all_found_paths.extend(dps_found.iter().cloned());
     all_found_paths.extend(prefetch_found.iter().cloned());
+    all_found_paths.extend(file_candidates_found.iter().cloned());
+    let all_files = dedupe_paths_case_insensitive(&all_found_paths);
+    log_info(&format!(
+        "{}: {}",
+        tr(user_opts.lang, "Все разрешенные файлы", "All resolved files"),
+        all_files.len()
+    ));
     let mut other_disk_candidates = BTreeSet::new();
-    other_disk_candidates.extend(all_found_paths.iter().cloned());
+    other_disk_candidates.extend(all_files.iter().cloned());
     other_disk_candidates.extend(extracted_full_pe.iter().cloned());
     other_disk_candidates.extend(java_full.iter().cloned());
     other_disk_candidates.extend(full_not_found.iter().cloned());
@@ -870,6 +913,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         "[5/8] Writing reports",
     ));
     write_list(&results.join("allpe").join("allpe.txt"), &allpe)?;
+    write_list(&results.join("allfiles").join("allfiles.txt"), &all_files)?;
     write_list(&results.join("NormalPE").join("NormalPE.txt"), &normal_pe)?;
     write_list(
         &results.join("allpe").join("files_without_path.txt"),
@@ -953,9 +997,10 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     )?;
 
     let mut sc = BTreeSet::new();
-    sc.extend(allpe.iter().cloned());
+    sc.extend(all_files.iter().cloned());
     sc.extend(resolved_pathless.iter().cloned());
     sc.extend(extracted_pathless_pe.iter().cloned());
+    sc.extend(file_candidates_names.iter().cloned());
     let sfiles = suspicious_files(&sc);
     write_list(
         &results.join("suspect_file").join("suspect_file.txt"),
@@ -967,14 +1012,14 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     for item in &full_not_found {
         if should_include_deleted_path(item) {
             deleted.insert(deleted_status_row(
-                "allpe_full",
+                "all_files_full",
                 item,
                 "deleted",
                 &a.file_time_hints,
             ));
         } else {
             trash_deleted.insert(deleted_status_row(
-                "allpe_full",
+                "all_files_full",
                 item,
                 "deleted",
                 &a.file_time_hints,
@@ -984,14 +1029,14 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     for item in &pathless_not_found {
         if should_include_deleted_name(item) {
             deleted.insert(deleted_status_row(
-                "allpe_name",
+                "all_files_name",
                 item,
                 "deleted",
                 &a.file_time_hints,
             ));
         } else {
             trash_deleted.insert(deleted_status_row(
-                "allpe_name",
+                "all_files_name",
                 item,
                 "deleted",
                 &a.file_time_hints,
@@ -1103,7 +1148,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     )?;
 
     let mut tool_scope = BTreeSet::new();
-    tool_scope.extend(all_found_paths.iter().cloned());
+    tool_scope.extend(all_files.iter().cloned());
     tool_scope.extend(full_not_found.iter().cloned());
     tool_scope.extend(pathless_not_found.iter().cloned());
     tool_scope.extend(scripts_deleted.iter().cloned());
@@ -1233,71 +1278,12 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         &results.join("domains").join("suspicious_domains.txt"),
         &suspicious_domain_hits,
     )?;
-    let mut yara_targets = BTreeSet::new();
-    yara_targets.extend(allpe.iter().cloned());
-    yara_targets.extend(jar_paths.iter().cloned());
-    yara_targets.extend(filter_items_by_ext(&start_found, YARA_SCAN_EXTS));
-    yara_targets.extend(filter_items_by_ext(&dps_found, YARA_SCAN_EXTS));
-    yara_targets = dedupe_paths_case_insensitive(&yara_targets);
-    let normal_cmp = normal_pe
-        .iter()
-        .map(|x| normalize_cmp_path(x))
-        .collect::<HashSet<_>>();
-    let before_yara_filter = yara_targets.len();
-    yara_targets.retain(|x| !normal_cmp.contains(&normalize_cmp_path(x)));
-    let excluded_normal = before_yara_filter.saturating_sub(yara_targets.len());
-    if excluded_normal > 0 {
-        log_info(&format!(
-            "{}: {}",
-            tr(
-                user_opts.lang,
-                "Исключено из YARA (NormalPE)",
-                "Excluded from YARA (NormalPE)"
-            ),
-            excluded_normal
-        ));
-    }
-    let before_profile_filter = yara_targets.len();
-    yara_targets.retain(|x| should_scan_yara_target_screenshare(x));
-    let excluded_profile = before_profile_filter.saturating_sub(yara_targets.len());
-    if excluded_profile > 0 {
-        log_info(&format!(
-            "{}: {}",
-            tr(
-                user_opts.lang,
-                "Исключено из YARA (профиль screenshare)",
-                "Excluded from YARA (screenshare profile)"
-            ),
-            excluded_profile
-        ));
-    }
-    let yara_soft_limit = env::var("RSS_ANALYS_YARA_SOFT_LIMIT")
-        .ok()
-        .and_then(|v| v.trim().parse::<usize>().ok())
-        .map(|v| v.clamp(50, 400_000))
-        .or_else(|| user_opts.analysis_mode.yara_soft_limit_default());
-    if let Some(yara_soft_limit) = yara_soft_limit {
-        let before_perf_trim = yara_targets.len();
-        yara_targets = trim_yara_targets_for_speed(&yara_targets, yara_soft_limit);
-        let excluded_perf = before_perf_trim.saturating_sub(yara_targets.len());
-        if excluded_perf > 0 {
-            log_info(&format!(
-                "{}: {}",
-                tr(
-                    user_opts.lang,
-                    "Исключено из YARA (быстрый приоритет)",
-                    "Excluded from YARA (fast priority)"
-                ),
-                excluded_perf
-            ));
-        }
-    } else {
-        log_info(tr(
-            user_opts.lang,
-            "Режим YARA без soft-limit (полный охват целей)",
-            "YARA soft-limit disabled (full target coverage)",
-        ));
-    }
+    let yara_targets = all_files.clone();
+    log_info(tr(
+        user_opts.lang,
+        "YARA: полный охват по всем найденным файлам без фильтра по расширению",
+        "YARA: full coverage over all resolved files without extension filtering",
+    ));
     log_info(&format!(
         "{}: {:.1}s",
         tr(
@@ -1310,14 +1296,19 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
     run_live.note_metric("timing.resolve_ms", resolve_started.elapsed().as_millis() as usize);
     run_live.note_stage(
         "stage5",
-        &format!("resolve summary: allpe={} suspicious_files={}", allpe.len(), sfiles.len()),
+        &format!(
+            "resolve summary: all_files={} legacy_profile={} suspicious_files={}",
+            all_files.len(),
+            allpe.len(),
+            sfiles.len()
+        ),
     );
 
     let yara_started = Instant::now();
     log_step(tr(
         user_opts.lang,
-        "[6/8] Сканирование найденных PE/JAR",
-        "[6/8] Scanning found PE/JAR files",
+        "[6/8] Сканирование всех найденных файлов",
+        "[6/8] Scanning all resolved files with YARA",
     ));
     let yara_hits = match yara_scan(&yara_targets, &tools) {
         Ok(y) => {
@@ -1445,6 +1436,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         &inputs,
         &dmp_sources,
         &a,
+        all_files.len(),
         allpe.len(),
         resolved_pathless.len(),
         full_not_found.len(),
@@ -1510,6 +1502,7 @@ fn run(user_opts: &UserOptions) -> io::Result<()> {
         &inputs,
         &dmp_sources,
         &a,
+        &all_files,
         &allpe,
         &normal_pe,
         &scripts_status,
@@ -1763,25 +1756,19 @@ impl Analyzer {
     }
 
     fn collect_files(&mut self, raw: &str) {
-        if !raw.contains('.') {
-            return;
-        }
-        let lower = raw.to_ascii_lowercase();
-        if !lower.contains(".exe")
-            && !lower.contains(".dll")
-            && !lower.contains(".jar")
-            && !lower.contains(".bat")
-            && !lower.contains(".cmd")
-            && !lower.contains(".ps1")
-            && !lower.contains(".pf")
-        {
+        if !raw.contains('.') && !ROOTED_FILE_RE.is_match(raw) {
             return;
         }
         let line_time_hints = extract_line_time_hints(raw);
-        for c in extract_binary_candidates(raw) {
-            let Some(n) = norm_file_candidate(&c) else {
+        for c in extract_file_candidates(raw) {
+            let Some(n) = norm_any_file_candidate(&c) else {
                 continue;
             };
+            for hint in &line_time_hints {
+                self.note_file_time_hint(&n, hint);
+            }
+            self.file_candidates.insert(n.clone());
+
             let Some(ext) = bin_ext(&n) else {
                 continue;
             };
@@ -1802,9 +1789,6 @@ impl Analyzer {
             let Some(name) = normalize_pathless_name_with_exts(&raw_name, TRACKED_FILE_EXTS) else {
                 continue;
             };
-            for hint in &line_time_hints {
-                self.note_file_time_hint(&n, hint);
-            }
 
             if ext == "exe" || ext == "dll" {
                 if is_abs_win(&n) {
@@ -1851,28 +1835,31 @@ impl Analyzer {
             let Some(path_raw) = caps.get(1).map(|m| m.as_str()) else {
                 continue;
             };
-            let Some(n) = norm_file_candidate(path_raw) else {
-                continue;
-            };
-            for hint in &line_time_hints {
-                self.note_file_time_hint(&n, hint);
-            }
-            let Some(ext) = bin_ext(&n) else {
-                continue;
-            };
-            if !START_EXTS.contains(&ext) {
-                continue;
-            }
-            if is_abs_win(&n) {
-                self.start.insert(n);
-            } else {
-                let raw_name = Path::new(&n)
-                    .file_name()
-                    .and_then(OsStr::to_str)
-                    .unwrap_or(&n)
-                    .to_ascii_lowercase();
-                if let Some(name) = normalize_pathless_name_with_exts(&raw_name, START_EXTS) {
-                    self.start.insert(name);
+            for candidate in extract_file_candidates(path_raw) {
+                let Some(n) = norm_any_file_candidate(&candidate) else {
+                    continue;
+                };
+                for hint in &line_time_hints {
+                    self.note_file_time_hint(&n, hint);
+                }
+                self.file_candidates.insert(n.clone());
+                let Some(ext) = bin_ext(&n) else {
+                    continue;
+                };
+                if !START_EXTS.contains(&ext) {
+                    continue;
+                }
+                if is_abs_win(&n) {
+                    self.start.insert(n);
+                } else {
+                    let raw_name = Path::new(&n)
+                        .file_name()
+                        .and_then(OsStr::to_str)
+                        .unwrap_or(&n)
+                        .to_ascii_lowercase();
+                    if let Some(name) = normalize_pathless_name_with_exts(&raw_name, START_EXTS) {
+                        self.start.insert(name);
+                    }
                 }
             }
         }

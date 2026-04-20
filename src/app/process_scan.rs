@@ -1387,6 +1387,21 @@ mod tests {
     }
 
     #[test]
+    fn persistence_detects_wmi_subscription_commands() {
+        let ioc = BTreeSet::from([
+            r#"wmic /NAMESPACE:"\\root\subscription" PATH __EventFilter CREATE Name="TestFilter", EventNamespace="root\cimv2", QueryLanguage="WQL", Query="SELECT * FROM __InstanceModificationEvent WITHIN 60 WHERE TargetInstance ISA 'Win32_PerfFormattedData_PerfOS_System' AND TargetInstance.SystemUpTime >= 240 AND TargetInstance.SystemUpTime < 325""#.to_string(),
+            r#"wmic /NAMESPACE:"\\root\subscription" PATH CommandLineEventConsumer CREATE Name="TestConsumer", CommandLineTemplate="calc.exe""#.to_string(),
+        ]);
+        let out = collect_persistence_hits(&[&ioc]);
+        assert_eq!(
+            out.iter()
+                .filter(|x| x.starts_with("wmi_subscription |"))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
     fn credential_detector_drops_signature_noise() {
         let ioc = BTreeSet::from([
             "HEUR:Trojan-PSW.PowerShell.Mimikatz.gen".to_string(),
@@ -1568,6 +1583,27 @@ mod tests {
     }
 
     #[test]
+    fn dps_rows_accept_hex_tail_and_skip_excluded_names() {
+        let mut a = Analyzer::default();
+        a.analyze_fragment("!!Discord.exe!2026/03/25:13:01:44!ba7c565!");
+        a.analyze_fragment("!!svchost.exe!2026/03/25:13:01:44!0!");
+
+        assert!(a.dps_events.iter().any(|(f, ts)| {
+            f.eq_ignore_ascii_case("discord.exe") && ts == "2026/03/25:13:01:44"
+        }));
+        assert!(
+            a.dps_files
+                .iter()
+                .any(|x| x.eq_ignore_ascii_case("discord.exe"))
+        );
+        assert!(
+            !a.dps_files
+                .iter()
+                .any(|x| x.eq_ignore_ascii_case("svchost.exe"))
+        );
+    }
+
+    #[test]
     fn file_time_hints_are_applied_to_status_rows() {
         let mut a = Analyzer::default();
         a.analyze_fragment(r#"C:\Users\test\AppData\Roaming\tool\loader.exe 2025-11-17 14:22:01"#);
@@ -1687,6 +1723,10 @@ mod tests {
             r"cmd /c reg delete HKEY_CURRENT_USER\\Software\\Bad /f",
             &empty_needles
         ));
+        assert!(should_keep_for_fast_analysis_line(
+            "!!Discord.exe!2026/03/25:13:01:44!ba7c565!",
+            &empty_needles
+        ));
         assert!(!should_keep_for_fast_analysis_line(
             "QwErTyUiOpAsDfGhJkLzXcVbNm",
             &empty_needles
@@ -1798,5 +1838,27 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].matched_count, 2);
         assert_eq!(hits[0].min_hits, 2);
+    }
+
+    #[test]
+    fn generic_file_candidates_accept_text_and_extensionless_names() {
+        assert_eq!(
+            norm_any_file_candidate(r"C:\Users\alice\Desktop\notes.txt /scan"),
+            Some(r"C:\Users\alice\Desktop\notes.txt".to_string())
+        );
+        assert_eq!(
+            norm_any_file_candidate(r#""C:\Users\alice\Desktop\README""#),
+            Some(r"C:\Users\alice\Desktop\README".to_string())
+        );
+        assert!(is_valid_any_file_candidate("README"));
+        assert!(is_valid_any_file_candidate("notes.md"));
+    }
+
+    #[test]
+    fn deep_lookup_buckets_keep_extensionless_names() {
+        let target_names = HashSet::from(["readme".to_string(), "notes.txt".to_string()]);
+        let buckets = build_target_name_buckets(&target_names);
+        assert!(buckets.get("").is_some_and(|set| set.contains("readme")));
+        assert!(buckets.get("txt").is_some_and(|set| set.contains("notes.txt")));
     }
 }

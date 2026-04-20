@@ -948,6 +948,45 @@ fn extract_binary_candidates(line: &str) -> Vec<String> {
     out
 }
 
+fn extract_file_candidates(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+
+    for m in ROOTED_FILE_RE.find_iter(line) {
+        let c = line[m.start()..m.end()].trim().to_string();
+        if c.is_empty() {
+            continue;
+        }
+        let key = c.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(c);
+        }
+    }
+
+    for m in FILE_EXT_CHUNK_RE.find_iter(line) {
+        if !file_ext_boundary_ok(line, m.end()) {
+            continue;
+        }
+        let mut start = m.start();
+        for (i, ch) in line[..m.start()].char_indices().rev() {
+            if is_bin_stop(ch) {
+                break;
+            }
+            start = i;
+        }
+        let c = line[start..m.end()].trim().to_string();
+        if c.is_empty() {
+            continue;
+        }
+        let key = c.to_ascii_lowercase();
+        if seen.insert(key) {
+            out.push(c);
+        }
+    }
+
+    out
+}
+
 fn is_bin_stop(ch: char) -> bool {
     matches!(
         ch,
@@ -1007,6 +1046,90 @@ fn norm_file_candidate(raw: &str) -> Option<String> {
         return None;
     }
     Some(c)
+}
+
+fn norm_any_file_candidate(raw: &str) -> Option<String> {
+    let mut c = raw
+        .trim()
+        .trim_matches(|x: char| "\"'`".contains(x))
+        .to_string();
+    if c.is_empty() {
+        return None;
+    }
+
+    if let Some(trimmed) = trim_candidate_to_last_known_extension(&c) {
+        c = trimmed;
+    }
+
+    if c.contains("://") || c.contains("http:\\") || c.contains("https:\\") {
+        return None;
+    }
+    if c.starts_with("*:") || c.starts_with("?:") {
+        return None;
+    }
+
+    c = trim_to_last_path_root(&c);
+    c = normalize_full_windows_path(&c);
+    c = trim_to_last_path_root(&c);
+    c = normalize_full_windows_path(&c);
+    if has_broken_device_volume_marker(&c) {
+        return None;
+    }
+
+    if !is_abs_win(&c) && !c.contains('\\') && !c.contains('/') && c.contains(char::is_whitespace) {
+        if let Some(last) = c.split_whitespace().last() {
+            c = last.to_string();
+        }
+    }
+
+    if !is_valid_any_file_candidate(&c) {
+        return None;
+    }
+
+    if is_abs_win(&c) {
+        Some(c)
+    } else {
+        normalize_pathless_name_any(&c)
+    }
+}
+
+fn trim_candidate_to_last_known_extension(raw: &str) -> Option<String> {
+    let mut last_match = None;
+    for m in FILE_EXT_END_RE.find_iter(raw) {
+        if !file_ext_boundary_ok(raw, m.end()) {
+            continue;
+        }
+        last_match = Some(m);
+    }
+    let m = last_match?;
+    if m.start() == 0 {
+        return None;
+    }
+    Some(raw[..m.end()].to_string())
+}
+
+fn file_ext_boundary_ok(text: &str, end: usize) -> bool {
+    let Some(next) = text.get(end..).and_then(|tail| tail.chars().next()) else {
+        return true;
+    };
+    matches!(
+        next,
+        ' ' | '\t'
+            | '\n'
+            | '\r'
+            | '"'
+            | '\''
+            | '`'
+            | '<'
+            | '>'
+            | ','
+            | ';'
+            | ':'
+            | '|'
+            | ')'
+            | ']'
+            | '}'
+    )
 }
 
 fn trim_to_last_path_root(input: &str) -> String {
@@ -1097,10 +1220,23 @@ fn normalize_dps_file_token(raw: &str) -> Option<String> {
         return None;
     }
     let normalized = normalize_full_windows_path(token);
+    let file_name = Path::new(&normalized)
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or(&normalized);
+    if is_excluded_dps_name_lc(&file_name.to_ascii_lowercase()) {
+        return None;
+    }
     if is_valid_any_file_candidate(&normalized) {
         return Some(normalized);
     }
     None
+}
+
+fn is_excluded_dps_name_lc(name_lc: &str) -> bool {
+    DPS_EXCLUDED_NAMES
+        .iter()
+        .any(|candidate| name_lc.eq_ignore_ascii_case(candidate))
 }
 
 fn normalize_prefetch_name(raw: &str) -> Option<String> {
@@ -2487,4 +2623,3 @@ fn rule_matches_process(rule: &CompiledCustomRule, process_name: Option<&str>) -
         (Some(scope), Some(name)) => scope.eq_ignore_ascii_case(name),
     }
 }
-

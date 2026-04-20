@@ -88,6 +88,13 @@ fn yara_scan_inner(allpe: &BTreeSet<String>) -> io::Result<BTreeSet<String>> {
                 }
                 let end = (start + batch_size).min(files.len());
                 for path in &files[start..end] {
+                    let filepath_value = normalize_yara_filepath_value(path);
+                    if scanner
+                        .set_global("filepath", filepath_value.as_str())
+                        .is_err()
+                    {
+                        continue;
+                    }
                     let Ok(r) = scanner.scan_file(path) else {
                         continue;
                     };
@@ -177,17 +184,32 @@ fn compile_embedded_yara_rules() -> io::Result<(Rules, HashMap<String, BTreeSet<
         "Compiling embedded scanning rules",
     ));
     let mut compiler = Compiler::new();
+    compiler
+        .define_global("filepath", "")
+        .map_err(|err| io::Error::other(format!("embedded YARA global define failed: {err}")))?;
     let mut loaded = 0usize;
+    let mut compile_errors = Vec::new();
     for source in &sources {
-        if compiler.add_source(source.source.as_str()).is_ok() {
-            loaded += 1;
+        match compiler.add_source(source.source.as_str()) {
+            Ok(_) => loaded += 1,
+            Err(err) => compile_errors.push(format!("{}: {err}", source.path)),
         }
+    }
+    if !compile_errors.is_empty() {
+        return Err(io::Error::other(format!(
+            "embedded YARA compile failed: {}",
+            compile_errors.join(" | ")
+        )));
     }
     if loaded == 0 {
         return Ok((compiler.build(), HashMap::new()));
     }
 
     Ok((compiler.build(), rule_to_yar))
+}
+
+fn normalize_yara_filepath_value(path: &str) -> String {
+    normalize_full_windows_path(path).replace('\\', "/")
 }
 
 fn yara_match_report(

@@ -5,6 +5,7 @@ fn write_summary(
     inputs: &[PathBuf],
     dmps: &[PathBuf],
     a: &Analyzer,
+    all_files: usize,
     allpe: usize,
     resolved: usize,
     nf_full: usize,
@@ -88,8 +89,8 @@ fn write_summary(
     writeln!(f, "- FilelessExecution: {}", a.fileless.len())?;
     writeln!(f, "- DLL: {}", a.dll.len())?;
     writeln!(f, "- ForfilesWmic: {}", a.forfiles_wmic.len())?;
-    writeln!(f, "- JavaBatchExecution: {}", a.java_batch.len())?;
-    writeln!(f, "- IOC: {}", a.ioc.len())?;
+    writeln!(f, "- Java / Batch activity: {}", a.java_batch.len())?;
+    writeln!(f, "- Command indicators: {}", a.ioc.len())?;
     writeln!(f, "- custom rules loaded: {}", custom_rules)?;
     writeln!(f, "- custom files with hits: {}", custom_hit_files)?;
     writeln!(f, "- custom hits total: {}", custom_hits_total)?;
@@ -108,7 +109,11 @@ fn write_summary(
         "- Dump core analyzer errors: {}",
         aethertrace_plugin_errors
     )?;
-    writeln!(f, "- Dump core open files/sockets: {}", aethertrace_open_files)?;
+    writeln!(
+        f,
+        "- Dump core open files/sockets: {}",
+        aethertrace_open_files
+    )?;
     writeln!(
         f,
         "- Dump core command buffers: {}",
@@ -135,7 +140,11 @@ fn write_summary(
         "- Dump core injected code: {}",
         aethertrace_injected_code
     )?;
-    writeln!(f, "- Dump core suspicious DLL: {}", aethertrace_suspicious_dll)?;
+    writeln!(
+        f,
+        "- Dump core suspicious DLL: {}",
+        aethertrace_suspicious_dll
+    )?;
     writeln!(
         f,
         "- Dump core modified memory: {}",
@@ -153,8 +162,13 @@ fn write_summary(
         aethertrace_javaw_betatest
     )?;
     writeln!(f, "- Dump core proxy bypass: {}", aethertrace_proxy_bypass)?;
-    writeln!(f, "- Dump core risk verdicts: {}", aethertrace_risk_verdicts)?;
-    writeln!(f, "- allpe: {}", allpe)?;
+    writeln!(
+        f,
+        "- Dump core risk verdicts: {}",
+        aethertrace_risk_verdicts
+    )?;
+    writeln!(f, "- all_files: {}", all_files)?;
+    writeln!(f, "- legacy_binary_profile: {}", allpe)?;
     writeln!(f, "- NormalPE: {}", normal_pe)?;
     writeln!(f, "- scripts: {}", scripts)?;
     writeln!(f, "- beta: {}", beta)?;
@@ -234,8 +248,7 @@ fn build_file_exists_cache(paths: &BTreeSet<String>) -> HashMap<String, bool> {
                         break;
                     }
                     let normalized = normalize_full_windows_path(&items[idx]);
-                    let exists =
-                        path_exists_fast_with_parent_cache(&normalized, &mut parent_cache);
+                    let exists = path_exists_fast_with_parent_cache(&normalized, &mut parent_cache);
                     local.insert(normalize_cmp_path(&normalized), exists);
                 }
                 local
@@ -419,6 +432,9 @@ fn normalize_full_windows_path(path: &str) -> String {
     if let Some(mapped) = map_device_path_to_drive(&c) {
         c = mapped;
     }
+    if let Some(mapped) = normalize_unc_like_local_path(&c) {
+        c = mapped;
+    }
 
     if c.starts_with("\\Users\\")
         || c.starts_with("\\Windows\\")
@@ -433,6 +449,69 @@ fn normalize_full_windows_path(path: &str) -> String {
 
     c = uppercase_drive_prefix(&c);
     collapse_backslashes_keep_unc(&c)
+}
+
+fn normalize_unc_like_local_path(path: &str) -> Option<String> {
+    let p = path.trim().replace('/', "\\");
+    let rest = p.strip_prefix("\\\\")?;
+    let parts = rest
+        .split('\\')
+        .map(str::trim)
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let (drive, start_idx) = if parts[0].len() == 1
+        && parts[0].chars().all(|c| c.is_ascii_alphabetic())
+        && parts
+            .get(1)
+            .is_some_and(|segment| known_local_root_segment(segment).is_some())
+    {
+        (
+            parts[0].chars().next()?.to_ascii_uppercase(),
+            1usize,
+        )
+    } else if known_local_root_segment(parts[0]).is_some() {
+        ('C', 0usize)
+    } else if parts.len() >= 2
+        && !is_plausible_unc_host_segment(parts[0])
+        && known_local_root_segment(parts[1]).is_some()
+    {
+        ('C', 1usize)
+    } else {
+        return None;
+    };
+
+    let suffix = parts[start_idx..].join("\\");
+    if suffix.is_empty() {
+        return None;
+    }
+    Some(format!("{drive}:\\{suffix}"))
+}
+
+fn known_local_root_segment(segment: &str) -> Option<&'static str> {
+    let lower = segment.trim().to_ascii_lowercase();
+    match lower.as_str() {
+        "windows" => Some("Windows"),
+        "users" => Some("Users"),
+        "program files" => Some("Program Files"),
+        "program files (x86)" => Some("Program Files (x86)"),
+        "programdata" => Some("ProgramData"),
+        "perflogs" => Some("PerfLogs"),
+        _ => None,
+    }
+}
+
+fn is_plausible_unc_host_segment(segment: &str) -> bool {
+    let trimmed = segment.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    trimmed
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 fn normalize_drive_prefix_with_spaces(path: &str) -> String {
@@ -882,9 +961,6 @@ fn is_sane_windows_segment(segment: &str) -> bool {
     {
         return false;
     }
-    if segment.contains('=') && !segment.ends_with(".sys") && !segment.ends_with(".dll") {
-        return false;
-    }
     true
 }
 
@@ -1006,7 +1082,20 @@ fn should_include_prefetch_deleted_name(prefetch_name: &str) -> bool {
     let Some(program_hint) = prefetch_program_hint(prefetch_name) else {
         return false;
     };
-    should_include_deleted_name(&program_hint)
+    let Some(normalized) = normalize_pathless_name_with_exts(&program_hint, TRACKED_FILE_EXTS)
+    else {
+        return false;
+    };
+    let Some(stem) = Path::new(&normalized).file_stem().and_then(OsStr::to_str) else {
+        return false;
+    };
+    let lower = normalized.to_ascii_lowercase();
+    let suspicious_keyword = SUSPICIOUS.iter().any(|k| lower.contains(k))
+        || is_false_positive_suspicious_path_lc(&lower);
+    suspicious_keyword
+        && is_high_signal_name_stem(stem)
+        && !is_common_windows_binary_stem(stem)
+        && !is_likely_build_artifact_name(stem)
 }
 
 fn is_common_windows_binary_stem(stem: &str) -> bool {
@@ -1902,14 +1991,17 @@ fn is_valid_file_name_any(file_name: &str) -> bool {
     if file_name.is_empty() || file_name.starts_with('.') {
         return false;
     }
-    let Some(ext) = Path::new(file_name).extension().and_then(OsStr::to_str) else {
-        return false;
-    };
-    if ext.is_empty() || ext.len() > 16 {
+    if file_name.ends_with('.') || file_name.ends_with(' ') {
         return false;
     }
-    if !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
-        return false;
+    let ext = Path::new(file_name).extension().and_then(OsStr::to_str);
+    if let Some(ext) = ext {
+        if ext.is_empty() || ext.len() > 16 {
+            return false;
+        }
+        if !ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return false;
+        }
     }
     let Some(stem) = Path::new(file_name).file_stem().and_then(OsStr::to_str) else {
         return false;
@@ -2334,18 +2426,26 @@ fn build_dps_status_rows(
     let mut out = BTreeSet::new();
     for (file, value) in events {
         let normalized = normalize_full_windows_path(file);
+        let display = Path::new(&normalized)
+            .file_name()
+            .and_then(OsStr::to_str)
+            .unwrap_or(&normalized)
+            .trim()
+            .trim_matches(|c: char| "\"'` ,;|)]}([{".contains(c))
+            .to_string();
+        if display.is_empty() {
+            continue;
+        }
         let (display_name, exists) = if is_abs_win(&normalized) {
-            let name = Path::new(&normalized)
-                .file_name()
-                .and_then(OsStr::to_str)
-                .unwrap_or(&normalized)
-                .to_string();
             let present = found_cmp.contains(&normalize_cmp_path(&normalized))
                 || file_name_lower(&normalized).is_some_and(|n| found_names.contains(&n));
-            (name, present)
-        } else if let Some(name) = normalize_pathless_name_any(&normalized) {
-            let present = found_names.contains(&name);
-            (name, present)
+            (display, present)
+        } else if let Some(name_key) = normalize_pathless_name_any(&normalized) {
+            if is_excluded_dps_name_lc(&name_key) {
+                continue;
+            }
+            let present = found_names.contains(&name_key);
+            (display, present)
         } else {
             continue;
         };
@@ -2467,7 +2567,8 @@ fn suspicious_files(candidates: &BTreeSet<String>) -> BTreeSet<String> {
         if lower.is_empty() || lower.len() > 320 {
             continue;
         }
-        if is_build_or_dependency_artifact_path_lc(&lower) || is_tool_artifact_path_noise_lc(&lower) {
+        if is_build_or_dependency_artifact_path_lc(&lower) || is_tool_artifact_path_noise_lc(&lower)
+        {
             continue;
         }
 
@@ -2481,7 +2582,9 @@ fn suspicious_files(candidates: &BTreeSet<String>) -> BTreeSet<String> {
         {
             continue;
         }
-        if !file_name.ends_with(".exe") && !file_name.ends_with(".dll") && !file_name.ends_with(".sys")
+        if !file_name.ends_with(".exe")
+            && !file_name.ends_with(".dll")
+            && !file_name.ends_with(".sys")
         {
             continue;
         }
@@ -3620,7 +3723,9 @@ fn tool_evasion_tag_from_line(lower: &str) -> Option<&'static str> {
     ) && (lower.contains("\\efi\\")
         || lower.contains("\\efi\\microsoft\\boot\\")
         || lower.contains("efi system partition"));
-    if boot_terms && (bcd_boot_tamper || (secureboot_reg_tamper && secureboot_target) || efi_partition_tamper) {
+    if boot_terms
+        && (bcd_boot_tamper || (secureboot_reg_tamper && secureboot_target) || efi_partition_tamper)
+    {
         return Some("boot_firmware_evasion");
     }
     if has_token_lc(lower, "bcdedit")
@@ -4389,63 +4494,6 @@ fn should_scan_yara_target_screenshare(path: &str) -> bool {
     true
 }
 
-fn trim_yara_targets_for_speed(targets: &BTreeSet<String>, soft_limit: usize) -> BTreeSet<String> {
-    let force_full = env::var("RSS_ANALYS_YARA_FULL")
-        .ok()
-        .map(|v| {
-            let v = v.trim().to_ascii_lowercase();
-            matches!(v.as_str(), "1" | "true" | "yes" | "on")
-        })
-        .unwrap_or(false);
-    if force_full || targets.len() <= soft_limit {
-        return targets.clone();
-    }
-
-    let mut ranked = targets.iter().cloned().collect::<Vec<_>>();
-    ranked.sort_by(|a, b| {
-        yara_target_speed_priority(b)
-            .cmp(&yara_target_speed_priority(a))
-            .then_with(|| a.cmp(b))
-    });
-
-    ranked.into_iter().take(soft_limit).collect::<BTreeSet<_>>()
-}
-
-fn yara_target_speed_priority(path: &str) -> usize {
-    let lower = normalize_cmp_path(path);
-    let mut score = 0usize;
-    if has_high_signal_path_keyword_lc(&lower) {
-        score += 60;
-    }
-    if BYPASS_ARTIFACT_KEYWORDS
-        .iter()
-        .any(|kw| keyword_match_lc(&lower, kw))
-    {
-        score += 45;
-    }
-    if lower.contains("\\users\\")
-        || lower.contains("\\downloads\\")
-        || lower.contains("\\desktop\\")
-        || lower.contains("\\appdata\\")
-        || lower.contains("\\temp\\")
-        || lower.contains("\\programdata\\")
-        || lower.contains("\\$recycle.bin\\")
-    {
-        score += 24;
-    }
-    if lower.ends_with(".sys") {
-        score += 16;
-    } else if lower.ends_with(".exe") || lower.ends_with(".dll") {
-        score += 10;
-    } else if lower.ends_with(".jar") {
-        score += 8;
-    }
-    if lower.starts_with("c:\\windows\\") || lower.starts_with("c:\\program files\\") {
-        score = score.saturating_sub(8);
-    }
-    score
-}
-
 fn collect_remote_session_hits(sets: &[&BTreeSet<String>]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for set in sets {
@@ -4493,15 +4541,18 @@ mod resolve_and_triage_tests {
     #[test]
     fn suspicious_keyword_exclusions_drop_known_false_positive_names() {
         assert!(is_false_positive_suspicious_path_lc("triggerbot.exe"));
-        assert!(is_false_positive_suspicious_path_lc(r"c:\users\alice\downloads\doomsday.exe"));
+        assert!(is_false_positive_suspicious_path_lc(
+            r"c:\users\alice\downloads\doomsday.exe"
+        ));
         assert!(!has_suspicious_keyword("triggerbot.exe"));
-        assert!(!has_suspicious_keyword(r"C:\Users\alice\Downloads\doomsday.exe"));
+        assert!(!has_suspicious_keyword(
+            r"C:\Users\alice\Downloads\doomsday.exe"
+        ));
     }
 
     #[test]
     fn minecraft_local_proxy_tag_requires_minecraft_context() {
-        let strong =
-            r#"javaw.exe .minecraft proxyserver=127.0.0.1:10808 sing-box tun2socks"#;
+        let strong = r#"javaw.exe .minecraft proxyserver=127.0.0.1:10808 sing-box tun2socks"#;
         let weak = r#"proxyserver=127.0.0.1:10808 sing-box tun2socks"#;
         assert_eq!(
             network_tunnel_command_tag_from_line(&strong.to_ascii_lowercase()),
@@ -4512,5 +4563,30 @@ mod resolve_and_triage_tests {
             None
         );
     }
-}
 
+    #[test]
+    fn normalize_unc_like_local_roots_to_c_drive() {
+        assert_eq!(
+            normalize_full_windows_path(r"\\WINDOWS\SYSTEM32\APPXDEPLOYMENTCLIENT.DLL"),
+            r"C:\WINDOWS\SYSTEM32\APPXDEPLOYMENTCLIENT.DLL"
+        );
+        assert_eq!(
+            normalize_full_windows_path(
+                r"\\Program Files\PowerShell\7\System.Reflection.Emit.Lightweight.dll"
+            ),
+            r"C:\Program Files\PowerShell\7\System.Reflection.Emit.Lightweight.dll"
+        );
+        assert_eq!(
+            normalize_full_windows_path(r"\\22-+3\Windows\System32\gpsvc.dll"),
+            r"C:\Windows\System32\gpsvc.dll"
+        );
+    }
+
+    #[test]
+    fn keep_real_unc_paths_untouched() {
+        assert_eq!(
+            normalize_full_windows_path(r"\\192.168.1.10\share\tool.exe"),
+            r"\\192.168.1.10\share\tool.exe"
+        );
+    }
+}

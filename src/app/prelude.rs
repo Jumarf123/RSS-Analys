@@ -16,7 +16,6 @@ use std::cmp::min;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::env;
 use std::ffi::OsStr;
-use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -64,7 +63,6 @@ const DMP_STRINGS_TIMEOUT_SECS: u64 = 900;
 const DMP_STRINGS_HEARTBEAT_SECS: u64 = 15;
 const FAST_INPUT_STRINGS_TIMEOUT_SECS: u64 = 180;
 const PE_ONLY_EXTS: &[&str] = &["exe", "dll"];
-const YARA_SCAN_EXTS: &[&str] = &["exe", "dll", "jar"];
 const JAR_EXTS: &[&str] = &["jar"];
 const RESOLVE_EXTS: &[&str] = &["exe", "dll", "jar", "bat", "cmd", "ps1", "pf", "txt"];
 const SCRIPT_EXTS: &[&str] = &["bat", "cmd", "ps1"];
@@ -72,6 +70,15 @@ const PREFETCH_EXTS: &[&str] = &["pf"];
 const START_EXTS: &[&str] = &["exe", "dll", "bat", "cmd", "ps1", "jar", "txt"];
 const TRACKED_FILE_EXTS: &[&str] = &["exe", "dll", "bat", "cmd", "ps1", "jar", "pf"];
 const BIN_EXTS: &[&str] = &["exe", "dll", "bat", "cmd", "ps1", "jar", "pf"];
+const DPS_EXCLUDED_NAMES: &[&str] = &[
+    "svchost.exe",
+    "reg.exe",
+    "wmiapsrv.exe",
+    "wmplayer.exe",
+    "amdrssrcext.exe",
+    "services.exe",
+    "conhost.exe",
+];
 const DOWNLOAD_LINK_EXTS: &[&str] = &["exe", "dll", "jar", "zip", "rar"];
 const PRIMARY_LOCAL_DISKS: &[char] = &['C', 'D'];
 const BRAND_SITE: &str = "Residence Screenshare";
@@ -107,7 +114,6 @@ const MAX_FILE_TIME_HINTS_PER_ROW: usize = 3;
 const DEEP_LOOKUP_MAX_NAMES: usize = 12_000;
 const DEEP_LOOKUP_AUTO_MAX_NAMES: usize = 3_000;
 const DEEP_LOOKUP_ROOT_TIMEOUT_SECS: u64 = 14;
-const YARA_TARGET_SOFT_LIMIT: usize = 1_800;
 const RUN_LIVE_TIMELINE_LIMIT: usize = 1_400;
 const RUN_LIVE_EVIDENCE_LIMIT: usize = 8_000;
 
@@ -162,22 +168,22 @@ const SUSPICIOUS: &[&str] = &[
     "conceal",
     "pandora",
     "rebellion",
-	"nursultan",
-	"celestial",
-	"celka",
-	"minced",
-	"exloader",
-	"macros",
-	"catlean",
-	"catlavan",
-	"thunderhack",
-	"bleachhack",
-	"wexside",
-	"arbuz",
-	"zenith",
-	"rockstar",
-	"melonity",
-	"nurik",
+    "nursultan",
+    "celestial",
+    "celka",
+    "minced",
+    "exloader",
+    "macros",
+    "catlean",
+    "catlavan",
+    "thunderhack",
+    "bleachhack",
+    "wexside",
+    "arbuz",
+    "zenith",
+    "rockstar",
+    "melonity",
+    "nurik",
 ];
 
 const REMOTE_ACCESS_KEYWORDS: &[&str] = &[
@@ -252,22 +258,22 @@ const CHEAT_ARTIFACT_KEYWORDS: &[&str] = &[
     "battleye bypass",
     "vgk bypass",
     "vanguard bypass",
-	"nursultan",
-	"celestial",
-	"celka",
-	"minced",
-	"exloader",
-	"macros",
-	"catlean",
-	"catlavan",
-	"thunderhack",
-	"bleachhack",
-	"wexside",
-	"arbuz",
-	"zenith",
-	"rockstar",
-	"melonity",
-	"nurik",
+    "nursultan",
+    "celestial",
+    "celka",
+    "minced",
+    "exloader",
+    "macros",
+    "catlean",
+    "catlavan",
+    "thunderhack",
+    "bleachhack",
+    "wexside",
+    "arbuz",
+    "zenith",
+    "rockstar",
+    "melonity",
+    "nurik",
 ];
 
 const BYPASS_ARTIFACT_KEYWORDS: &[&str] = &[
@@ -296,7 +302,7 @@ const BYPASS_ARTIFACT_KEYWORDS: &[&str] = &[
     "truecrypt",
     "bcdedit /set testsigning on",
     "bcdedit /set nointegritychecks on",
-	"Fsutil usn delete journal",
+    "Fsutil usn delete journal",
 ];
 
 const SUSPICIOUS_LINK_KEYWORDS: &[&str] = &[
@@ -336,22 +342,22 @@ const SUSPICIOUS_LINK_KEYWORDS: &[&str] = &[
     "timestomp",
     "sdelete",
     "bleachbit",
-	"nursultan",
-	"celestial",
-	"celka",
-	"minced",
-	"exloader",
-	"macros",
-	"catlean",
-	"catlavan",
-	"thunderhack",
-	"bleachhack",
-	"wexside",
-	"arbuz",
-	"zenith",
-	"rockstar",
-	"melonity",
-	"nurik",
+    "nursultan",
+    "celestial",
+    "celka",
+    "minced",
+    "exloader",
+    "macros",
+    "catlean",
+    "catlavan",
+    "thunderhack",
+    "bleachhack",
+    "wexside",
+    "arbuz",
+    "zenith",
+    "rockstar",
+    "melonity",
+    "nurik",
 ];
 
 const SUSPICIOUS_DOMAIN_HOSTS: &[&str] = &[
@@ -363,8 +369,8 @@ const SUSPICIOUS_DOMAIN_HOSTS: &[&str] = &[
     "mpgh.net",
     "x64.gg",
     "cheater.fun",
-	"celka.xyz",
-	"nursultan.fun",
+    "celka.xyz",
+    "nursultan.fun",
 ];
 
 const BYOVD_DRIVER_NAMES: &[&str] = &[
@@ -590,6 +596,16 @@ static DOMAIN_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("domain regex")
 });
+static FILE_EXT_CHUNK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\.[a-z0-9]{1,16}").expect("file ext chunk"));
+static FILE_EXT_END_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)\.([a-z0-9]{1,16})").expect("file ext end"));
+static ROOTED_FILE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)(?:[a-z]\s*:\s*[\\/]|\\\\\?\\|\\\?\\|\\device\\harddiskvolume\d+\\)[^\r\n"'<>|]{1,520}"#,
+    )
+    .expect("rooted file")
+});
 static EXT_CHUNK_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\.(?:exe|dll|bat|cmd|ps1|jar|pf)\w*").expect("ext chunk"));
 static EXT_END_RE: LazyLock<Regex> =
@@ -607,7 +623,7 @@ static YARA_RULE_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 static PROCESS_START_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)\bprocessstart\s*,\s*([^\r\n]+)").expect("process start"));
 static DPS_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)!{1,2}([^!\r\n]+?\.[a-z0-9]{1,16})!([0-9]{4}/[0-9]{2}/[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2})!\d+!")
+    Regex::new(r"(?i)!{1,2}([^!\r\n]+?)!([0-9]{4}/[0-9]{2}/[0-9]{2}:[0-9]{2}:[0-9]{2}:[0-9]{2})![^!\r\n]+!")
         .expect("dps row")
 });
 static CUSTOM_PROTOCOL_SCHEME_RE: LazyLock<Regex> =
@@ -699,6 +715,7 @@ struct Analyzer {
     ioc: BTreeSet<String>,
     full_paths: BTreeSet<String>,
     pathless: BTreeSet<String>,
+    file_candidates: BTreeSet<String>,
     java_paths: BTreeSet<String>,
     scripts: BTreeSet<String>,
     start: BTreeSet<String>,
@@ -795,14 +812,6 @@ impl AnalysisMode {
     fn allow_large_dmp_deep_skip_default(self) -> bool {
         matches!(self, Self::Fast)
     }
-
-    fn yara_soft_limit_default(self) -> Option<usize> {
-        match self {
-            Self::Fast => Some(160),
-            Self::Medium => Some(YARA_TARGET_SOFT_LIMIT),
-            Self::Slow => None,
-        }
-    }
 }
 
 struct UserOptions {
@@ -837,10 +846,7 @@ impl RunLiveContext {
         }
         self.timeline.push(format!("[{stage}] {detail}"));
         if self.timeline.len() > RUN_LIVE_TIMELINE_LIMIT {
-            let drain = self
-                .timeline
-                .len()
-                .saturating_sub(RUN_LIVE_TIMELINE_LIMIT);
+            let drain = self.timeline.len().saturating_sub(RUN_LIVE_TIMELINE_LIMIT);
             self.timeline.drain(0..drain);
         }
     }
@@ -1749,4 +1755,3 @@ impl Drop for RunUiGuard {
         let _ = execute!(out, Show, LeaveAlternateScreen, ResetColor);
     }
 }
-

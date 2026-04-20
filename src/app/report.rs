@@ -7,6 +7,7 @@ fn write_html_report(
     inputs: &[PathBuf],
     dmps: &[PathBuf],
     a: &Analyzer,
+    all_files: &BTreeSet<String>,
     allpe: &BTreeSet<String>,
     normal_pe: &BTreeSet<String>,
     scripts: &BTreeSet<String>,
@@ -53,7 +54,7 @@ fn write_html_report(
     };
 
     let summary_json = format!(
-        "{{\"inputs\":{},\"dmps\":{},\"links\":{},\"regdel\":{},\"replace\":{},\"fileless\":{},\"dll\":{},\"forfiles\":{},\"java_batch\":{},\"ioc\":{},\"allpe\":{},\"normal_pe\":{},\"scripts\":{},\"beta\":{},\"file_dates\":{},\"dps\":{},\"started\":{},\"prefetch\":{},\"otherdisk\":{},\"deleted\":{},\"trash_deleted\":{},\"resolved_names\":{},\"not_found_full\":{},\"not_found_names\":{},\"suspend_links\":{},\"download_links\":{},\"suspect_files\":{},\"yara_targets\":{},\"yara\":{},\"java_paths\":{},\"remote_access_tools\":{},\"analysis_tools\":{},\"credential_access\":{},\"network_tunnels\":{},\"remote_domains\":{},\"tunnel_domains\":{},\"remote_sessions\":{},\"persistence\":{},\"anti_forensics\":{},\"lolbas\":{},\"domain_frequency\":{},\"suspicious_domains\":{},\"triage_priority\":{},\"custom_rules\":{},\"custom_hit_files\":{},\"custom_hits\":{},\"process_scanned\":{},\"process_skipped\":{},\"process_dumps\":{},\"aethertrace_enabled\":{},\"aethertrace_dumps\":{},\"aethertrace_plugins_ok\":{},\"aethertrace_plugin_errors\":{},\"aethertrace_open_files\":{},\"aethertrace_command_buffers\":{},\"aethertrace_hidden_processes\":{},\"aethertrace_shell_history\":{},\"aethertrace_network\":{},\"aethertrace_suspicious_connections\":{},\"aethertrace_injected_code\":{},\"aethertrace_suspicious_dll\":{},\"aethertrace_modified_memory\":{},\"aethertrace_event_correlations\":{},\"aethertrace_lolbin_abuse\":{},\"aethertrace_javaw_betatest\":{},\"aethertrace_proxy_bypass\":{},\"aethertrace_risk_verdicts\":{}}}",
+        "{{\"inputs\":{},\"dmps\":{},\"links\":{},\"regdel\":{},\"replace\":{},\"fileless\":{},\"dll\":{},\"forfiles\":{},\"java_batch\":{},\"ioc\":{},\"all_files\":{},\"allpe\":{},\"normal_pe\":{},\"scripts\":{},\"beta\":{},\"file_dates\":{},\"dps\":{},\"started\":{},\"prefetch\":{},\"otherdisk\":{},\"deleted\":{},\"trash_deleted\":{},\"resolved_names\":{},\"not_found_full\":{},\"not_found_names\":{},\"suspend_links\":{},\"download_links\":{},\"suspect_files\":{},\"yara_targets\":{},\"yara\":{},\"java_paths\":{},\"remote_access_tools\":{},\"analysis_tools\":{},\"credential_access\":{},\"network_tunnels\":{},\"remote_domains\":{},\"tunnel_domains\":{},\"remote_sessions\":{},\"persistence\":{},\"anti_forensics\":{},\"lolbas\":{},\"domain_frequency\":{},\"suspicious_domains\":{},\"triage_priority\":{},\"custom_rules\":{},\"custom_hit_files\":{},\"custom_hits\":{},\"process_scanned\":{},\"process_skipped\":{},\"process_dumps\":{},\"aethertrace_enabled\":{},\"aethertrace_dumps\":{},\"aethertrace_plugins_ok\":{},\"aethertrace_plugin_errors\":{},\"aethertrace_open_files\":{},\"aethertrace_command_buffers\":{},\"aethertrace_hidden_processes\":{},\"aethertrace_shell_history\":{},\"aethertrace_network\":{},\"aethertrace_suspicious_connections\":{},\"aethertrace_injected_code\":{},\"aethertrace_suspicious_dll\":{},\"aethertrace_modified_memory\":{},\"aethertrace_event_correlations\":{},\"aethertrace_lolbin_abuse\":{},\"aethertrace_javaw_betatest\":{},\"aethertrace_proxy_bypass\":{},\"aethertrace_risk_verdicts\":{}}}",
         inputs.len(),
         dmps.len(),
         a.links.len(),
@@ -64,6 +65,7 @@ fn write_html_report(
         a.forfiles_wmic.len(),
         a.java_batch.len(),
         a.ioc.len(),
+        all_files.len(),
         allpe.len(),
         normal_pe.len(),
         scripts.len(),
@@ -784,12 +786,73 @@ fn write_html_report(
       gap: 10px;
       align-items: center;
     }
+    .row-item-command {
+      grid-template-columns: 1fr;
+      align-items: flex-start;
+    }
+    .row-item-rich {
+      grid-template-columns: 1fr auto;
+      align-items: flex-start;
+    }
+    .row-item-accent-danger {
+      box-shadow: inset 3px 0 0 rgba(255, 125, 134, 0.7);
+    }
+    .row-item-accent-warn {
+      box-shadow: inset 3px 0 0 rgba(255, 203, 118, 0.7);
+    }
+    .row-item-accent-ok {
+      box-shadow: inset 3px 0 0 rgba(76, 175, 80, 0.7);
+    }
+    .row-item-accent-info {
+      box-shadow: inset 3px 0 0 rgba(140, 200, 255, 0.6);
+    }
     .row-left {
       font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
       overflow-wrap: anywhere;
       white-space: pre-wrap;
       font-size: 0.82rem;
       line-height: 1.36;
+    }
+    .row-main {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+    .row-title {
+      font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+      font-size: 0.84rem;
+      line-height: 1.38;
+      font-weight: 800;
+      color: var(--text);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .row-subtitle {
+      font-size: 0.75rem;
+      line-height: 1.35;
+      color: var(--muted);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .row-body {
+      font-size: 0.79rem;
+      line-height: 1.4;
+      color: var(--text-soft);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .row-code {
+      margin: 0;
+      padding: 9px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface-soft) 94%, transparent);
+      color: var(--text);
+      font-family: "JetBrains Mono", "Cascadia Mono", "Consolas", monospace;
+      font-size: 0.78rem;
+      line-height: 1.42;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     .row-right {
       display: flex;
@@ -798,6 +861,14 @@ fn write_html_report(
       justify-content: flex-end;
       align-items: center;
       min-width: 160px;
+    }
+    .row-item-command .row-right {
+      justify-content: flex-start;
+      min-width: 0;
+    }
+    .row-item-rich .row-right {
+      justify-content: flex-end;
+      min-width: 140px;
     }
     .badge {
       font-size: 0.74rem;
@@ -835,6 +906,17 @@ fn write_html_report(
     }
     .hide {
       display: none;
+    }
+
+    @media (max-width: 980px) {
+      .row-item {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+      }
+      .row-right {
+        justify-content: flex-start;
+        min-width: 0;
+      }
     }
 
     @supports selector(::-webkit-scrollbar) {
@@ -991,6 +1073,7 @@ fn write_html_report(
       dmps: __DMPS__,
       tabs: {
             custom_hits: __CUSTOM_HITS__,
+            all_files: __ALL_FILES__,
             allpe: __ALLPE__,
             normalpe: __NORMALPE__,
             scripts: __SCRIPTS__,
@@ -1075,6 +1158,8 @@ fn write_html_report(
       "scripts",
       "beta",
       "file_dates",
+      "java_batch",
+      "ioc",
       "start",
       "prefetch",
       "dps",
@@ -1086,6 +1171,7 @@ fn write_html_report(
       "summary",
       "triage_priority",
       "custom_hits",
+      "all_files",
       "allpe",
       "normalpe",
       "scripts",
@@ -1259,13 +1345,18 @@ fn write_html_report(
         keyword: "Keyword",
         host: "Host",
         time: "Time",
+        target: "Target",
+        commandLine: "Command line",
+        timeHints: "Time hints",
+        entries: "entries",
         clean: "No detections",
         parseError: "Parser info",
         tab_summary: "Summary",
         tab_triage_priority: "Priority triage (beta)",
         tab_custom_hits: "Custom hits",
-        tab_allpe: "All PE",
-        tab_normalpe: "Normal PE",
+        tab_all_files: "All files",
+        tab_allpe: "Legacy binary profile",
+        tab_normalpe: "NormalPE whitelist",
         tab_scripts: "Scripts",
         tab_beta: "Beta",
         tab_file_dates: "File dates",
@@ -1289,8 +1380,8 @@ fn write_html_report(
         tab_fileless: "FilelessExecution",
         tab_dll: "DLL",
         tab_forfiles_wmic: "ForfilesWmic",
-        tab_java_batch: "JavaBatchExecution",
-        tab_ioc: "Command IOC",
+        tab_java_batch: "Java / Batch activity",
+        tab_ioc: "Command indicators",
         tab_remote_access_tools: "Cheat artifacts (beta)",
         tab_analysis_tools: "Bypass artifacts (beta)",
         tab_credential_access: "Artifact wipe (beta)",
@@ -1329,8 +1420,8 @@ fn write_html_report(
         s_fileless: "FilelessExecution",
         s_dll: "DLL",
         s_forfiles: "ForfilesWmic",
-        s_java_batch: "JavaBatchExecution",
-        s_ioc: "Command IOC",
+        s_java_batch: "Java / Batch activity",
+        s_ioc: "Command indicators",
         s_custom_rules: "Custom rules",
         s_custom_hit_files: "Custom hit files",
         s_custom_hits: "Custom hits total",
@@ -1355,8 +1446,9 @@ fn write_html_report(
         s_aethertrace_javaw_betatest: "Dump core javaw betatest",
         s_aethertrace_proxy_bypass: "Dump core proxy bypass",
         s_aethertrace_risk_verdicts: "Dump core risk verdicts",
-        s_allpe: "allpe",
-        s_normal_pe: "NormalPE",
+        s_all_files: "All files",
+        s_allpe: "Legacy binary profile",
+        s_normal_pe: "NormalPE whitelist",
         s_scripts: "Scripts",
         s_beta: "Beta",
         s_file_dates: "File dates",
@@ -1481,13 +1573,18 @@ fn write_html_report(
         keyword: "Ключевое слово",
         host: "Хост",
         time: "Время",
+        target: "Цель",
+        commandLine: "Командная строка",
+        timeHints: "Подсказки времени",
+        entries: "записей",
         clean: "Нет детектов",
         parseError: "Служебная строка",
         tab_summary: "Сводка",
         tab_triage_priority: "Приоритетный triage (beta)",
         tab_custom_hits: "Кастомные совпадения",
-        tab_allpe: "All PE",
-        tab_normalpe: "Normal PE",
+        tab_all_files: "Все файлы",
+        tab_allpe: "Legacy binary-профиль",
+        tab_normalpe: "Whitelist NormalPE",
         tab_scripts: "Скрипты",
         tab_beta: "Beta",
         tab_file_dates: "Файлы с датами",
@@ -1511,8 +1608,8 @@ fn write_html_report(
         tab_fileless: "FilelessExecution",
         tab_dll: "DLL",
         tab_forfiles_wmic: "ForfilesWmic",
-        tab_java_batch: "JavaBatchExecution",
-        tab_ioc: "Командные IOC",
+        tab_java_batch: "Java / Batch активность",
+        tab_ioc: "Командные индикаторы",
         tab_remote_access_tools: "Чит-артефакты (beta)",
         tab_analysis_tools: "Байпас-артефакты (beta)",
         tab_credential_access: "Очистка следов (beta)",
@@ -1551,8 +1648,8 @@ fn write_html_report(
         s_fileless: "FilelessExecution",
         s_dll: "DLL",
         s_forfiles: "ForfilesWmic",
-        s_java_batch: "JavaBatchExecution",
-        s_ioc: "Командные IOC",
+        s_java_batch: "Java / Batch активность",
+        s_ioc: "Командные индикаторы",
         s_custom_rules: "Кастомные правила",
         s_custom_hit_files: "Файлы с совпадениями",
         s_custom_hits: "Всего совпадений",
@@ -1577,8 +1674,9 @@ fn write_html_report(
         s_aethertrace_javaw_betatest: "Dump core javaw betatest",
         s_aethertrace_proxy_bypass: "Dump core proxy bypass",
         s_aethertrace_risk_verdicts: "Dump core риск-вердикты",
-        s_allpe: "allpe",
-        s_normal_pe: "NormalPE",
+        s_all_files: "Все файлы",
+        s_allpe: "Legacy binary-профиль",
+        s_normal_pe: "Whitelist NormalPE",
         s_scripts: "Скрипты",
         s_beta: "Beta",
         s_file_dates: "Файлы с датами",
@@ -2117,11 +2215,247 @@ fn write_html_report(
       }
     }
 
+    function extractUrlFromText(text) {
+      const m = /(?:https?|wss?|ftp):\/\/[^\s"'<>`]+/i.exec(String(text || ""));
+      return m ? m[0] : "";
+    }
+
+    function extractPathLikeFromText(text) {
+      const normalized = memoryExtractFirstPath(text);
+      if (normalized) {
+        return normalized;
+      }
+      const unc = /\\\\[^\\\/\s]+\\[^\\\/\s]+\\[^\r\n"<>|]{3,520}/i.exec(String(text || ""));
+      return unc ? unc[0].trim() : "";
+    }
+
+    function commandLauncherFromText(text) {
+      const m = /(?:cmd(?:\.exe)?\s+\/[ck]|powershell(?:\.exe)?|pwsh(?:\.exe)?|java(?:\.exe)?\s+-jar|java(?:\.exe)?|wmic|forfiles|rundll32(?:\.exe)?|regsvr32(?:\.exe)?|mshta(?:\.exe)?|wscript(?:\.exe)?|cscript(?:\.exe)?|schtasks(?:\.exe)?|curl(?:\.exe)?|bitsadmin(?:\.exe)?|certutil(?:\.exe)?|reg\s+(?:add|delete|query)|sc\s+(?:create|config|start|stop))/i.exec(String(text || ""));
+      return m ? m[0].trim() : "";
+    }
+
+    function pathTone(path) {
+      const lower = String(path || "").toLowerCase();
+      if (!lower) {
+        return "info";
+      }
+      if (firstKeyword(lower)) {
+        return "danger";
+      }
+      if (
+        lower.includes("\\users\\") ||
+        lower.includes("\\appdata\\") ||
+        lower.includes("\\downloads\\") ||
+        lower.includes("\\desktop\\") ||
+        lower.includes("\\temp\\") ||
+        lower.includes("\\programdata\\")
+      ) {
+        return "warn";
+      }
+      if (
+        lower.includes("\\windows\\") ||
+        lower.includes("\\program files\\") ||
+        lower.includes("\\program files (x86)\\")
+      ) {
+        return "ok";
+      }
+      return "info";
+    }
+
+    function splitTimeHints(value) {
+      return String(value || "")
+        .split(",")
+        .map((x) => x.trim())
+        .filter(Boolean);
+    }
+
+    function parseFileDatesRow(line) {
+      const [pathRaw, hintsRaw] = splitOnce(String(line || ""), " | ");
+      const path = pathRaw.trim() || String(line || "").trim();
+      const hints = splitTimeHints(hintsRaw);
+      const file = fileNameFromPath(path);
+      const ext = extFromName(file);
+      const tone = pathTone(path);
+      const badges = [];
+      if (file) {
+        badges.push({ text: `${t("file")}: ${file}`, tone });
+      }
+      if (ext) {
+        badges.push({ text: ext, tone: ext === "EXE" || ext === "DLL" || ext === "JAR" ? "danger" : "info" });
+      }
+      if (hints.length > 0) {
+        badges.push({ text: `${t("timeHints")}: ${hints.length} ${t("entries")}`, tone: "info" });
+      }
+      const subtitle = file && file !== path ? `${t("target")}: ${path}` : "";
+      const code = hints.length ? hints.join("\n") : hintsRaw.trim();
+      return {
+        title: path,
+        subtitle,
+        body: code ? t("timeHints") : "",
+        code,
+        badges,
+        layout: "rich",
+        accent: tone
+      };
+    }
+
+    function commandTone(raw, primary, launcher) {
+      const lower = `${String(raw || "")} ${String(primary || "")} ${String(launcher || "")}`.toLowerCase();
+      if (
+        firstKeyword(lower) ||
+        lower.includes("encodedcommand") ||
+        lower.includes("frombase64string") ||
+        lower.includes("invoke-webrequest") ||
+        lower.includes("invoke-restmethod")
+      ) {
+        return "danger";
+      }
+      if (
+        launcher &&
+        /(powershell|pwsh|cmd|java|wmic|forfiles|rundll32|regsvr32|mshta|wscript|cscript|schtasks|bitsadmin|certutil|curl|reg )/i.test(launcher)
+      ) {
+        return "warn";
+      }
+      return pathTone(primary);
+    }
+
+    function parseCommandActivityRow(tab, line) {
+      const raw = String(line || "").trim();
+      const launcher = commandLauncherFromText(raw);
+      const path = extractPathLikeFromText(raw);
+      const link = extractUrlFromText(raw);
+      const primary = path || link;
+      const file = primary ? fileNameFromPath(primary) : "";
+      const ext = file ? extFromName(file) : "";
+      const kw = firstKeyword(raw);
+      const tone = commandTone(raw, primary, launcher);
+      const badges = [];
+      if (launcher) {
+        badges.push({ text: `${t("program")}: ${launcher}`, tone: tab === "java_batch" ? "danger" : tone });
+      }
+      if (kw) {
+        badges.push({ text: `${t("keyword")}: ${kw}`, tone: "warn" });
+      }
+      if (file) {
+        badges.push({ text: `${t("file")}: ${file}`, tone });
+      }
+      if (!file && link) {
+        const host = hostFromLink(link);
+        if (host) {
+          badges.push({ text: `${t("host")}: ${host}`, tone: "info" });
+        }
+      }
+      if (ext) {
+        badges.push({ text: ext, tone: tab === "java_batch" ? "danger" : "info" });
+      }
+      const title = primary || launcher || raw;
+      const subtitleParts = [];
+      if (primary) {
+        const label = link && !path ? t("host") : t("target");
+        subtitleParts.push(`${label}: ${primary}`);
+      }
+      if (launcher && launcher !== title) {
+        subtitleParts.push(`${t("program")}: ${launcher}`);
+      }
+      const subtitle = subtitleParts.filter(Boolean).join("\n");
+      const code = raw !== title || subtitle ? raw : "";
+      return {
+        title,
+        subtitle,
+        body: code ? t("commandLine") : "",
+        code,
+        badges,
+        layout: "command",
+        accent: tone
+      };
+    }
+
     function parsePipeParts(line) {
       return String(line || "").split(" | ").map((x) => x.trim()).filter((x) => x.length > 0);
     }
 
+    function splitPipeTail(line) {
+      const parts = String(line || "").split(" | ").map((x) => x.trim());
+      if (parts.length <= 1) {
+        return { left: String(line || ""), meta: "", status: "" };
+      }
+      if (parts.length === 2) {
+        return { left: parts[0] || String(line || ""), meta: "", status: parts[1] || "" };
+      }
+      return {
+        left: parts.slice(0, -2).join(" | ") || String(line || ""),
+        meta: parts[parts.length - 2] || "",
+        status: parts[parts.length - 1] || ""
+      };
+    }
+
+    function statusTone(statusRaw) {
+      const status = String(statusRaw || "").trim().toLowerCase();
+      if (!status) {
+        return "info";
+      }
+      if (status.includes("no deleted")) {
+        return "ok";
+      }
+      if (status.includes("prefetch missing")) {
+        return "warn";
+      }
+      if (status.includes("missing")) {
+        return "warn";
+      }
+      if (status.includes("deleted")) {
+        return "danger";
+      }
+      return "info";
+    }
+
     function parseStructuredRow(tab, line) {
+      if (tab === "custom_hits") {
+        const raw = String(line || "");
+        const trimmed = raw.trim();
+        if (!trimmed) {
+          return null;
+        }
+        if (!trimmed.startsWith("-")) {
+          const file = fileNameFromPath(trimmed);
+          const ext = extFromName(file);
+          const badges = [{ text: `${t("file")}: ${file}`, tone: "info" }];
+          if (ext) {
+            badges.push({ text: ext, tone: "ok" });
+          }
+          return { left: trimmed, badges };
+        }
+
+        const ruleRe = /^\s*-\s*(.+?)\s+\((\d+)\/(\d+)\)\s+\[(.+?)\s+\|\s+min\s+(\d+)\]\s*=>\s*(.*)$/;
+        const m = raw.match(ruleRe);
+        if (!m) {
+          return { left: trimmed, badges: [{ text: t("parseError"), tone: "info" }] };
+        }
+        const client = (m[1] || "").trim();
+        const hitCount = Number(m[2] || "0");
+        const totalCount = Number(m[3] || "0");
+        const source = (m[4] || "").trim();
+        const minHits = (m[5] || "").trim();
+        const patternsRaw = (m[6] || "").trim();
+        const patterns = patternsRaw
+          ? patternsRaw.split(",").map((x) => x.trim()).filter(Boolean)
+          : [];
+        const previewCount = 8;
+        const preview = patterns.slice(0, previewCount).join(", ");
+        const remain = patterns.length > previewCount ? patterns.length - previewCount : 0;
+        const previewText = preview
+          ? `${preview}${remain > 0 ? ` ... +${remain}` : ""}`
+          : "-";
+
+        return {
+          left: `${client} (${hitCount}/${totalCount})\n${previewText}`,
+          badges: [
+            { text: `${t("rule")}: ${source}`, tone: "info" },
+            { text: `min ${minHits}`, tone: "warn" },
+            { text: `hits ${patterns.length}`, tone: "danger" }
+          ]
+        };
+      }
       if (line.startsWith("No ")) {
         return { left: line, badges: [{ text: t("clean"), tone: "ok" }] };
       }
@@ -2139,6 +2473,9 @@ fn write_html_report(
         }
       }
       if (tab === "yara") {
+        if (line.startsWith("No embedded rules") || line.startsWith("YARA error:")) {
+          return { left: line, badges: [{ text: t("parseError"), tone: "info" }] };
+        }
         const [file, rulesRaw] = splitOnce(line, " | ");
         const rules = rulesRaw
           .split(",")
@@ -2173,6 +2510,14 @@ fn write_html_report(
           };
         }
       }
+      if (tab === "suspend_links") {
+        const host = hostFromLink(line);
+        const kw = firstKeyword(line);
+        const badges = [];
+        if (kw) badges.push({ text: `${t("keyword")}: ${kw}`, tone: "warn" });
+        if (host) badges.push({ text: `${t("host")}: ${host}`, tone: "info" });
+        return { left: line, badges };
+      }
       if (tab === "download_links") {
         const [hostRaw, rest] = splitOnce(line, " | ");
         const [file, link] = splitOnce(rest, " | ");
@@ -2182,6 +2527,45 @@ fn write_html_report(
         if (file) badges.push({ text: `${t("file")}: ${file}`, tone: "warn" });
         if (ext) badges.push({ text: ext, tone: "danger" });
         return { left: link || line, badges };
+      }
+      if (tab === "file_dates") {
+        return parseFileDatesRow(line);
+      }
+      if (tab === "prefetch") {
+        const parts = splitPipeTail(line);
+        const badges = [];
+        if (parts.meta && parts.meta !== "-") {
+          badges.push({ text: `${t("program")}: ${parts.meta}`, tone: "info" });
+        }
+        if (parts.status) {
+          badges.push({ text: parts.status, tone: statusTone(parts.status) });
+        }
+        return { left: parts.left || line, badges };
+      }
+      if (tab === "scripts" || tab === "start" || tab === "deleted" || tab === "trashdeleted") {
+        const parts = splitPipeTail(line);
+        const badges = [];
+        if (parts.meta && parts.meta !== "-") {
+          badges.push({ text: `${t("time")}: ${parts.meta}`, tone: "info" });
+        }
+        if (parts.status) {
+          badges.push({ text: parts.status, tone: statusTone(parts.status) });
+        }
+        return { left: parts.left || line, badges };
+      }
+      if (tab === "dps") {
+        const parts = splitPipeTail(line);
+        const badges = [];
+        if (parts.meta && parts.meta !== "-") {
+          badges.push({ text: parts.meta, tone: "info" });
+        }
+        if (parts.status) {
+          badges.push({ text: parts.status, tone: statusTone(parts.status) });
+        }
+        return { left: parts.left || line, badges };
+      }
+      if (tab === "java_batch" || tab === "ioc") {
+        return parseCommandActivityRow(tab, line);
       }
       if (tab === "suspect_file") {
         const file = fileNameFromPath(line);
@@ -2206,10 +2590,49 @@ fn write_html_report(
         }
         const item = document.createElement("article");
         item.className = "row-item";
+        if (model.layout === "command") {
+          item.classList.add("row-item-command");
+        }
+        if (model.layout === "rich" || model.layout === "command") {
+          item.classList.add("row-item-rich");
+        }
+        if (model.accent) {
+          item.classList.add(`row-item-accent-${model.accent}`);
+        }
 
         const left = document.createElement("div");
         left.className = "row-left";
-        left.textContent = model.left || line;
+        if (model.title || model.subtitle || model.body || model.code) {
+          const main = document.createElement("div");
+          main.className = "row-main";
+          if (model.title) {
+            const title = document.createElement("div");
+            title.className = "row-title";
+            title.textContent = model.title;
+            main.appendChild(title);
+          }
+          if (model.subtitle) {
+            const subtitle = document.createElement("div");
+            subtitle.className = "row-subtitle";
+            subtitle.textContent = model.subtitle;
+            main.appendChild(subtitle);
+          }
+          if (model.body) {
+            const body = document.createElement("div");
+            body.className = "row-body";
+            body.textContent = model.body;
+            main.appendChild(body);
+          }
+          if (model.code) {
+            const code = document.createElement("pre");
+            code.className = "row-code";
+            code.textContent = model.code;
+            main.appendChild(code);
+          }
+          left.appendChild(main);
+        } else {
+          left.textContent = model.left || line;
+        }
         item.appendChild(left);
 
         const right = document.createElement("div");
@@ -2446,7 +2869,7 @@ fn write_html_report(
       const keys = [
         "inputs","dmps","links","regdel","replace","fileless","dll","forfiles",
         "java_batch","ioc","custom_rules","custom_hit_files","custom_hits",
-        "process_scanned","process_skipped","process_dumps","allpe","normal_pe",
+        "process_scanned","process_skipped","process_dumps","all_files","allpe","normal_pe",
         "aethertrace_enabled","aethertrace_dumps","aethertrace_plugins_ok","aethertrace_plugin_errors",
         "aethertrace_open_files","aethertrace_command_buffers","aethertrace_hidden_processes",
         "aethertrace_shell_history","aethertrace_network","aethertrace_suspicious_connections",
@@ -3948,6 +4371,7 @@ fn write_html_report(
     html = html.replace("__INPUTS__", &js_array_from_paths(inputs));
     html = html.replace("__DMPS__", &js_array_from_paths(dmps));
     html = html.replace("__CUSTOM_HITS__", &js_array_from_vec(custom_hits));
+    html = html.replace("__ALL_FILES__", &js_array_from_set(all_files));
     html = html.replace("__ALLPE__", &js_array_from_set(allpe));
     html = html.replace("__NORMALPE__", &js_array_from_set(normal_pe));
     html = html.replace("__SCRIPTS__", &js_array_from_set(scripts));
@@ -4022,10 +4446,7 @@ fn write_html_report(
     );
     html = html.replace(
         "__AETHERTRACE_NOTES__",
-        &js_array_from_set(&rows_with_default(
-            &memory_orbit.notes,
-            "No engine notes",
-        )),
+        &js_array_from_set(&rows_with_default(&memory_orbit.notes, "No engine notes")),
     );
     html = html.replace(
         "__AETHERTRACE_OPEN_FILES_SOCKETS__",
@@ -4138,5 +4559,3 @@ fn write_html_report(
     f.write_all(html.as_bytes())?;
     Ok(())
 }
-
-
